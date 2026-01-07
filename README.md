@@ -14,6 +14,11 @@ This repository contains two example projects:
   - Build: `make -C new_years`
   - Run: `./new_years/skyline_fireworks` (press `q` to quit)
 
+- sunset/
+  - A terminal sunset animation using `ncurses` in `sunset/sunset.c`.
+  - Build: `make -C sunset` or `cd sunset && make`
+  - Run: `./sunset/sunset` (press `q` to quit). The program uses 256-color palettes when available and runs a full day->night->day cycle (approx 140s by default).
+
 Requirements
 - A Unix-like environment (Linux, macOS, WSL)
 - A C compiler supporting C11 (e.g. `gcc` or `clang`)
