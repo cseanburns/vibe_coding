@@ -100,6 +100,8 @@ typedef struct {
     int wave_number;
     int wave_spawned;
     int wave_target;
+    int next_extra_life_score;
+    double wave_banner_timer;
 } GameState;
 
 void game_init(GameState *game);

@@ -162,15 +162,20 @@ void render_game(const GameState *game, int term_w, int term_h) {
 
     attron(COLOR_PAIR(27));
     mvprintw((int)GROUND_Y + 2, 0,
-             "Wave:%d  Score:%d  Bombs:%d  Lives:%d  Grounded:%d  Falling:%d  Lost:%d",
+             "Wave:%d  Score:%d  Next:%d  Bombs:%d  Lives:%d  Grounded:%d  Falling:%d  Lost:%d",
              game->wave_number,
              game->player.score,
+             game->next_extra_life_score,
              game->player.bombs,
              game->player.lives,
              game_humans_in_state(game, H_GROUNDED),
              game_humans_in_state(game, H_FALLING),
              game_humans_in_state(game, H_LOST));
     attroff(COLOR_PAIR(27));
+
+    if (game->wave_banner_timer > 0.0 && !game->game_over) {
+        mvprintw((int)GROUND_Y / 2, term_w / 2 - 6, "WAVE %d", game->wave_number);
+    }
 
     if (game->game_over) {
         mvprintw((int)GROUND_Y / 2, term_w / 2 - 8, "GAME OVER");

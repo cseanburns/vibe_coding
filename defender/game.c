@@ -46,6 +46,42 @@ static double signum(double value) {
     return 0.0;
 }
 
+static void award_score(GameState *game, int points) {
+    game->player.score += points;
+    while (game->player.score >= game->next_extra_life_score) {
+        game->player.lives++;
+        game->next_extra_life_score += 10000;
+    }
+}
+
+static int enemy_score_value(EnemyType type) {
+    switch (type) {
+        case E_MUTANT:
+            return 200;
+        case E_BOMBER:
+            return 175;
+        case E_LANDER:
+        default:
+            return 150;
+    }
+}
+
+static void spawn_enemy_projectile(GameState *game, double x, double y, double vx, double vy, double ttl) {
+    int i;
+
+    for (i = 0; i < MAX_ENEMY_BULLETS; ++i) {
+        if (!game->enemy_bullets[i].active) {
+            game->enemy_bullets[i].active = 1;
+            game->enemy_bullets[i].x = game_wrap_x(x);
+            game->enemy_bullets[i].y = y;
+            game->enemy_bullets[i].vx = vx;
+            game->enemy_bullets[i].vy = vy;
+            game->enemy_bullets[i].ttl = ttl;
+            return;
+        }
+    }
+}
+
 int game_humans_in_state(const GameState *game, HumanState state) {
     int count = 0;
     int i;
@@ -107,6 +143,7 @@ static void start_wave(GameState *game, int wave) {
     if (game->wave_target > 24) game->wave_target = 24;
     game->spawn_timer = 0.5;
     game->wave_clear_timer = 1.0;
+    game->wave_banner_timer = 1.8;
     if (wave > 1 && game->player.bombs < 9) {
         game->player.bombs++;
     }
@@ -125,6 +162,7 @@ void game_init(GameState *game) {
     game->player.facing = 1;
     game->player.carrying_human = -1;
     game->player.respawn_timer = 0.0;
+    game->next_extra_life_score = 10000;
 
     reset_player_position(game);
 
@@ -219,7 +257,7 @@ static void use_bomb(GameState *game) {
             game->humans[h].vy = 0.0;
         }
         game->enemies[i].active = 0;
-        game->player.score += 50;
+        award_score(game, 50);
     }
 
     for (i = 0; i < MAX_ENEMY_BULLETS; ++i) {
@@ -228,7 +266,6 @@ static void use_bomb(GameState *game) {
 }
 
 static void enemy_fire(GameState *game, const Enemy *enemy) {
-    int i;
     double dx;
     double dy;
     double dist;
@@ -240,17 +277,14 @@ static void enemy_fire(GameState *game, const Enemy *enemy) {
     dist = sqrt(dx * dx + dy * dy);
     if (dist < 1.0) dist = 1.0;
 
-    for (i = 0; i < MAX_ENEMY_BULLETS; ++i) {
-        if (!game->enemy_bullets[i].active) {
-            game->enemy_bullets[i].active = 1;
-            game->enemy_bullets[i].x = enemy->x;
-            game->enemy_bullets[i].y = enemy->y;
-            game->enemy_bullets[i].vx = (dx / dist) * 34.0;
-            game->enemy_bullets[i].vy = (dy / dist) * 34.0;
-            game->enemy_bullets[i].ttl = 2.0;
-            return;
-        }
+    if (enemy->type == E_BOMBER) {
+        spawn_enemy_projectile(game, enemy->x - 1.0, enemy->y + 1.0, -6.0, 22.0, 1.6);
+        spawn_enemy_projectile(game, enemy->x, enemy->y + 1.0, 0.0, 24.0, 1.6);
+        spawn_enemy_projectile(game, enemy->x + 1.0, enemy->y + 1.0, 6.0, 22.0, 1.6);
+        return;
     }
+
+    spawn_enemy_projectile(game, enemy->x, enemy->y, (dx / dist) * 34.0, (dy / dist) * 34.0, 2.0);
 }
 
 static void damage_player(GameState *game) {
@@ -342,7 +376,7 @@ static void update_player(GameState *game, double dt, const InputState *input) {
         game->humans[h].y = floor_y;
         game->humans[h].vy = 0.0;
         game->player.carrying_human = -1;
-        game->player.score += 250;
+        award_score(game, 250);
     }
 }
 
@@ -380,7 +414,7 @@ static void update_bullets(GameState *game, double dt) {
 
             game->enemies[e].active = 0;
             game->bullets[i].active = 0;
-            game->player.score += 150;
+            award_score(game, enemy_score_value(game->enemies[e].type));
             break;
         }
     }
@@ -573,6 +607,11 @@ static void update_humans(GameState *game, double dt) {
 void game_step(GameState *game, double dt, const InputState *input) {
     if (game->game_over) return;
 
+    if (game->wave_banner_timer > 0.0) {
+        game->wave_banner_timer -= dt;
+        if (game->wave_banner_timer < 0.0) game->wave_banner_timer = 0.0;
+    }
+
     update_player(game, dt, input);
     update_bullets(game, dt);
     update_enemy_bullets(game, dt);
@@ -595,7 +634,7 @@ void game_step(GameState *game, double dt, const InputState *input) {
     } else if (game_active_enemy_count(game) == 0) {
         game->wave_clear_timer -= dt;
         if (game->wave_clear_timer <= 0.0) {
-            game->player.score += 500 * game->wave_number;
+            award_score(game, 500 * game->wave_number);
             start_wave(game, game->wave_number + 1);
         }
     }
