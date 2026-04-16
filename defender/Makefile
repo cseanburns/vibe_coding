@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -O2 -Wall -std=c11
 LDFLAGS = -lncurses -lm
 TARGET = defender
-SRC = defender.c
+SRC = main.c game.c input.c render.c
 
 all: $(TARGET)
 
