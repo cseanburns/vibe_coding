@@ -24,6 +24,16 @@ double game_wrapped_dx(double from_x, double to_x) {
     return dx;
 }
 
+double game_terrain_y(double x) {
+    double wx = game_wrap_x(x);
+    double ridge = sin(wx * 0.020) * 1.5;
+    double swell = sin(wx * 0.047 + 1.3) * 1.1;
+    double shelf = sin(wx * 0.009 - 0.8) * 0.8;
+    double terrain = GROUND_Y - 1.4 + ridge + swell + shelf;
+
+    return clampd(terrain, 17.0, GROUND_Y);
+}
+
 static double distance_sq_wrapped(double ax, double ay, double bx, double by) {
     double dx = game_wrapped_dx(ax, bx);
     double dy = by - ay;
@@ -120,7 +130,7 @@ void game_init(GameState *game) {
 
     for (i = 0; i < initial_humans; ++i) {
         game->humans[i].x = game_wrap_x(spacing * (i + 1) + (rand() % 9) - 4);
-        game->humans[i].y = GROUND_Y;
+        game->humans[i].y = game_terrain_y(game->humans[i].x);
         game->humans[i].vy = 0.0;
         game->humans[i].state = H_GROUNDED;
     }
@@ -159,6 +169,10 @@ static void spawn_wave_enemy(GameState *game) {
     if (game->wave_number >= 3 && rand() % 100 < (game->wave_number - 2) * 8) {
         type = E_MUTANT;
         y = 3.0 + rand() % 6;
+    }
+    if (game->wave_number >= 5 && type == E_LANDER && rand() % 100 < 18) {
+        type = E_BOMBER;
+        y = 4.0 + rand() % 5;
     }
 
     if (spawn_enemy_type(game, type, x, y, dir)) {
@@ -302,20 +316,30 @@ static void update_player(GameState *game, double dt, const InputState *input) {
     if (game->player.y < 2.0) {
         game->player.y = 2.0;
         game->player.vy = 0.0;
-    } else if (game->player.y > GROUND_Y) {
-        game->player.y = GROUND_Y;
-        if (game->player.vy > 0.0) game->player.vy = 0.0;
+    } else {
+        double floor_y = game_terrain_y(game->player.x);
+
+        if (game->player.y > floor_y) {
+            if (game->player.vy > 10.0) {
+                damage_player(game);
+                return;
+            }
+            game->player.y = floor_y;
+            if (game->player.vy > 0.0) game->player.vy = 0.0;
+        }
     }
 
     if (input->fire) fire_bullet(game);
     if (input->bomb) use_bomb(game);
 
-    if (game->player.carrying_human >= 0 && game->player.y >= GROUND_Y - 0.2) {
+    if (game->player.carrying_human >= 0 &&
+        game->player.y >= game_terrain_y(game->player.x) - 0.15) {
         int h = game->player.carrying_human;
+        double floor_y = game_terrain_y(game->player.x);
 
         game->humans[h].state = H_GROUNDED;
         game->humans[h].x = game->player.x;
-        game->humans[h].y = GROUND_Y;
+        game->humans[h].y = floor_y;
         game->humans[h].vy = 0.0;
         game->player.carrying_human = -1;
         game->player.score += 250;
@@ -416,13 +440,16 @@ static void update_enemies(GameState *game, double dt) {
 
         if (!enemy->active) continue;
 
-        if (enemy->type == E_MUTANT) {
-            double dx = game->player.active ? game_wrapped_dx(enemy->x, game->player.x) : enemy->dir * 8.0;
-            double dy = game->player.active ? (game->player.y - enemy->y) : sin((enemy->x * 0.02) + i) * 2.0;
+            if (enemy->type == E_MUTANT) {
+                double dx = game->player.active ? game_wrapped_dx(enemy->x, game->player.x) : enemy->dir * 8.0;
+                double dy = game->player.active ? (game->player.y - enemy->y) : sin((enemy->x * 0.02) + i) * 2.0;
 
-            enemy->dir = dx >= 0.0 ? 1 : -1;
-            enemy->x += signum(dx) * 24.0 * dt;
-            enemy->y += signum(dy) * 14.0 * dt;
+                enemy->dir = dx >= 0.0 ? 1 : -1;
+                enemy->x += signum(dx) * 24.0 * dt;
+                enemy->y += signum(dy) * 14.0 * dt;
+            } else if (enemy->type == E_BOMBER) {
+                enemy->x += enemy->dir * 22.0 * dt;
+                enemy->y += sin((enemy->x * 0.04) + i) * 2.2 * dt;
         } else if (enemy->carrying >= 0) {
             int h = enemy->carrying;
 
@@ -478,16 +505,20 @@ static void update_enemies(GameState *game, double dt) {
         }
 
         enemy->x = game_wrap_x(enemy->x);
-        enemy->y = clampd(enemy->y, 2.0, GROUND_Y - 1.0);
+        enemy->y = clampd(enemy->y, 2.0, game_terrain_y(enemy->x) - 1.0);
         enemy->fire_timer -= dt;
         if (enemy->fire_timer <= 0.0) {
             if (game->player.active &&
                 distance_sq_wrapped(enemy->x, enemy->y, game->player.x, game->player.y) <= 130.0 * 130.0) {
                 enemy_fire(game, enemy);
             }
-            enemy->fire_timer = enemy->type == E_MUTANT
-                ? 0.55 + (rand() % 35) / 100.0
-                : 1.0 + (rand() % 90) / 100.0;
+            if (enemy->type == E_MUTANT) {
+                enemy->fire_timer = 0.55 + (rand() % 35) / 100.0;
+            } else if (enemy->type == E_BOMBER) {
+                enemy->fire_timer = 0.40 + (rand() % 30) / 100.0;
+            } else {
+                enemy->fire_timer = 1.0 + (rand() % 90) / 100.0;
+            }
         }
 
         if (game->player.active &&
@@ -504,6 +535,8 @@ static void update_humans(GameState *game, double dt) {
         Human *human = &game->humans[i];
 
         if (human->state == H_FALLING) {
+            double floor_y = game_terrain_y(human->x);
+
             human->vy += 26.0 * dt;
             human->y += human->vy * dt;
 
@@ -516,8 +549,8 @@ static void update_humans(GameState *game, double dt) {
                 continue;
             }
 
-            if (human->y >= GROUND_Y) {
-                human->y = GROUND_Y;
+            if (human->y >= floor_y) {
+                human->y = floor_y;
                 if (human->vy > 13.0) {
                     human->state = H_LOST;
                 } else {

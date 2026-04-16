@@ -23,7 +23,8 @@ typedef enum {
 
 typedef enum {
     E_LANDER = 0,
-    E_MUTANT
+    E_MUTANT,
+    E_BOMBER
 } EnemyType;
 
 typedef struct {
@@ -106,6 +107,7 @@ void game_step(GameState *game, double dt, const InputState *input);
 
 double game_wrap_x(double x);
 double game_wrapped_dx(double from_x, double to_x);
+double game_terrain_y(double x);
 
 int game_humans_in_state(const GameState *game, HumanState state);
 int game_active_human_count(const GameState *game);

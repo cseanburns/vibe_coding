@@ -73,7 +73,11 @@ void render_game(const GameState *game, int term_w, int term_h) {
             int rx = (int)((game->enemies[i].x / WORLD_W) * (radar_width - 1));
 
             if (rx >= 0 && rx < radar_width) {
-                mvaddch(0, radar_origin + rx, game->enemies[i].type == E_MUTANT ? 'M' : 'E');
+                int marker = 'E';
+
+                if (game->enemies[i].type == E_MUTANT) marker = 'M';
+                else if (game->enemies[i].type == E_BOMBER) marker = 'B';
+                mvaddch(0, radar_origin + rx, marker);
             }
         }
     }
@@ -88,7 +92,13 @@ void render_game(const GameState *game, int term_w, int term_h) {
 
     attron(COLOR_PAIR(25));
     for (i = 0; i < term_w; ++i) {
-        mvaddch(1 + (int)GROUND_Y, i, ' ');
+        int world_x = (int)game_wrap_x(game->player.x + (i - screen_center_x));
+        int terrain_y = 1 + (int)lround(game_terrain_y(world_x));
+        int y;
+
+        for (y = terrain_y; y < term_h - 1; ++y) {
+            mvaddch(y, i, ' ');
+        }
     }
     attroff(COLOR_PAIR(25));
 
@@ -115,7 +125,10 @@ void render_game(const GameState *game, int term_w, int term_h) {
         if (!game->enemies[i].active) continue;
 
         world_to_view(game->enemies[i].x, game->enemies[i].y, game->player.x, screen_center_x, &sx, &sy);
-        draw_block(sx - 1, sy, 3, 1, game->enemies[i].type == E_MUTANT ? 24 : 21, term_w, term_h);
+        draw_block(sx - 1, sy, 3, 1,
+                   game->enemies[i].type == E_MUTANT ? 24 :
+                   game->enemies[i].type == E_BOMBER ? 23 : 21,
+                   term_w, term_h);
     }
 
     for (i = 0; i < MAX_BULLETS; ++i) {
