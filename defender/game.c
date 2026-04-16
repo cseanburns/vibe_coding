@@ -140,6 +140,7 @@ static void start_wave(GameState *game, int wave) {
     game->wave_number = wave;
     game->wave_spawned = 0;
     game->wave_target = 4 + wave * 2;
+    game->wave_kills = 0;
     if (game->wave_target > 24) game->wave_target = 24;
     game->spawn_timer = 0.5;
     game->wave_clear_timer = 1.0;
@@ -257,6 +258,7 @@ static void use_bomb(GameState *game) {
             game->humans[h].vy = 0.0;
         }
         game->enemies[i].active = 0;
+        game->wave_kills++;
         award_score(game, 50);
     }
 
@@ -414,6 +416,7 @@ static void update_bullets(GameState *game, double dt) {
 
             game->enemies[e].active = 0;
             game->bullets[i].active = 0;
+            game->wave_kills++;
             award_score(game, enemy_score_value(game->enemies[e].type));
             break;
         }
@@ -633,7 +636,7 @@ void game_step(GameState *game, double dt, const InputState *input) {
         }
     } else if (game_active_enemy_count(game) == 0) {
         game->wave_clear_timer -= dt;
-        if (game->wave_clear_timer <= 0.0) {
+        if (game->wave_clear_timer <= 0.0 && game->wave_kills >= game->wave_target) {
             award_score(game, 500 * game->wave_number);
             start_wave(game, game->wave_number + 1);
         }
